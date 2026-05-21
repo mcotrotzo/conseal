@@ -19,6 +19,7 @@ import warnings
 
 from .. import tools
 
+CONVERGENCE = []
 
 class Sender(enum.Enum):
     """Type of sender."""
@@ -27,39 +28,6 @@ class Sender(enum.Enum):
     """Payload-limited sender."""
     DISTORTION_LIMITED_SENDER = enum.auto()
     """Distortion-limited sender."""
-
-
-# def get_p(
-#     lbda: float,
-#     *rhos: np.ndarray,
-#     add_zero: bool = True,
-# ) -> np.ndarray:
-#     """Converts distortions into probabilities,
-#     using Boltzmann-Gibbs distribution
-
-#     For more details, see `glossary <https://conseal.readthedocs.io/en/latest/glossary.html#embedding-simulation>`__.
-
-#     :param rhos: distortion of embedding choices, e.g. embedding +1 or embedding -1
-#     :type rhos: tuple
-#     :param lbda: parameter value
-#     :type lbda: float
-#     :param add_zero:
-#     :type add_zero: bool
-#     :param p_pm1: probability tensor for changes associated to rhos[0]
-#         of an arbitrary shape
-#     :rtype: `np.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-
-#     :Example:
-
-#     >>> # TODO
-#     """
-#     # denominator (forced left-associativity)
-#     denum = 1 if add_zero else 0
-#     for rho in rhos:
-#         denum += np.exp(-lbda * rho)
-#     #
-#     denum[denum == 0] = tools.EPS
-#     return np.exp(-lbda * rhos[0]) / denum
 
 
 def get_p(
@@ -86,19 +54,14 @@ def get_p(
 
     >>> # TODO
     """
-    all_rhos = [-lbda * rho for rho in rhos]
-    if add_zero:
-        # Create an array of zeros with the same shape as rhos
-        all_rhos.append(np.zeros_like(all_rhos[0]))
-    # shift
-    max_val = np.max(all_rhos, axis=0)
-    # stabilize denominator
-    denum = 0
-    for val in all_rhos:
-        denum += np.exp(val - max_val)
-    # stabilized numerator
-    num = np.exp((-lbda * rhos[0]) - max_val)
-    return num / denum
+    # denominator (forced left-associativity)
+    denum = 1 if add_zero else 0
+    for rho in rhos:
+        denum += np.exp(-lbda * rho)
+    #
+    denum[denum == 0] = tools.EPS
+    return np.exp(-lbda * rhos[0]) / denum
+
 
 def average_payload(
     *,
@@ -154,10 +117,8 @@ def average_payload(
 def average_distortion(
     rhos: Tuple[np.ndarray],
     *,
-    # e: float = None,
     lbda: float = None,
     ps: Tuple[np.ndarray] = None,
-    # q: int = None,
 ) -> Tuple[Tuple[np.ndarray], float]:
     """
 
@@ -221,6 +182,8 @@ def calc_lambda(
     alpha_max: float = 1,
     **kw,
 ) -> float:
+    global CONVERGENCE
+    CONVERGENCE = []
     """Implements binary search for lambda.
 
     The i-th element is embedded with a probability of
@@ -264,7 +227,6 @@ def calc_lambda(
         _, m3 = objective(lbda=l3, rhos=rhos, **kw)  # objective function
 
         iterations += 1
-
         # unbounded = search fails
         if iterations > 15:
             warnings.warn("unbounded distortion, search fails", RuntimeWarning)
@@ -300,6 +262,7 @@ def calc_lambda(
         # print(f'It {iterations} | {m1/n=} {m2/n=} {m3/n=} | {l1=} {lbda=} {l3=} |')
 
         # Proceed to the next iteration
+        CONVERGENCE.append(abs(m - m2))
         iterations = iterations + 1
 
     if iterations == 30:
